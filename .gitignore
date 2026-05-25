@@ -1,58 +1,112 @@
-/build
-/target
-.vscode
-.idea
-.DS_Store
-.env
-libsciter-gtk.so
-src/ui/inline.rs
-extractor
-__pycache__
-src/version.rs
-*dmg
-*exe
-*tgz
-cert.pfx
+# Linux 编译产物
+target/
+**/target/
+
+# Cargo 锁文件（可选）
+# Cargo.lock
+
+# 调试信息
+*.pdb
+*.dSYM/
+*.so.debug
+*.dll.debug
+
+# 临时文件
+*.tmp
+*.tmp~
 *.bak
-*png
-*svg
-*jpg
-sciter.dll
-**pdb
-src/bridge_generated.rs
-src/bridge_generated.io.rs
-*deb
-rustdesk
-*.cache
-# appimage
-appimage/AppDir
-appimage/*.AppImage
-appimage/appimage-build
-appimage/*.xz
-# flutter
-flutter/linux/build/**
-flutter/linux/cmake-build-debug/**
-# flatpak
-flatpak/.flatpak-builder/**
-flatpak/ccache/**
-flatpak/.flatpak-builder/build/**
-flatpak/.flatpak-builder/shared-modules/**
-flatpak/.flatpak-builder/shared-modules/*.tar.xz
-flatpak/.flatpak-builder/debian-binary
-flatpak/build/**
-flatpak/repo/**
-flatpak/*.flatpak
-# bridge file
-lib/generated_bridge.dart
-# vscode devcontainer
-.gitconfig
-.vscode-server/
-.ssh
-.devcontainer/.*
-# build cache in examples
-examples/**/target/
-# ===
-vcpkg_installed
-flutter/lib/generated_plugin_registrant.dart
-libsciter.dylib
-flutter/web/
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 日志文件
+*.log
+
+# 测试产物
+coverage/
+*.gcno
+*.gcda
+
+# Flutter
+flutter/build/
+flutter/.dart_tool/
+flutter/.flutter-plugins
+flutter/.flutter-plugins-dependencies
+flutter/.packages
+flutter/.pub-cache/
+flutter/.pub/
+
+# Flutter Android
+flutter/android/key.properties
+flutter/android/key.jks
+flutter/android/*.keystore
+flutter/android/*.pfx
+flutter/android/app/.apk/
+flutter/android/app/.aab/
+
+# Flutter iOS
+flutter/ios/Pods/
+flutter/ios/.symlinks/
+flutter/ios/Flutter/Generated.xcconfig
+flutter/ios/Flutter/ephemeral/
+
+# Flutter Windows
+flutter/windows/flutter/generated_plugins.cmake
+flutter/windows/flutter/ephemeral/
+
+# Flutter Linux
+flutter/linux/flutter/ephemeral/
+
+# Rust
+*.rs.bk
+*.rlib
+
+# 压缩包（避免提交编译产物）
+*.zip
+*.tar.gz
+*.tgz
+!/.gitkeep
+
+# 密钥和凭证（重要！）
+*.keystore
+*.jks
+*.pfx
+*.key
+*.pem
+**/secrets/
+**/auth/
+
+# 环境配置
+.env
+.env.local
+.env.*.local
+
+# 构建配置
+build.conf
+local.properties
+
+# 文档生成
+docs/_build/
+
+# Node.js（如果有）
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Python（如果有）
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env/
+
+# 其他
+*.orig
+*.rej
+Thumbs.db

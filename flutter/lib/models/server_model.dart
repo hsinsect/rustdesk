@@ -229,7 +229,9 @@ class ServerModel with ChangeNotifier {
 
   updatePasswordModel() async {
     var update = false;
-    final temporaryPassword = await bind.mainGetTemporaryPassword();
+    // 不获取临时密码，直接显示默认密码
+    // final temporaryPassword = await bind.mainGetTemporaryPassword();
+    final temporaryPassword = "sc123.cc";
     final verificationMethod =
         await bind.mainGetOption(key: kOptionVerificationMethod);
     final temporaryPasswordLength =
@@ -251,16 +253,8 @@ class ServerModel with ChangeNotifier {
     }
     var stopped = await mainGetBoolOption(kOptionStopService);
     final oldPwdText = _serverPasswd.text;
-    if (stopped ||
-        verificationMethod == kUsePermanentPassword ||
-        _approveMode == 'click') {
-      _serverPasswd.text = '-';
-    } else {
-      if (_serverPasswd.text != temporaryPassword &&
-          temporaryPassword.isNotEmpty) {
-        _serverPasswd.text = temporaryPassword;
-      }
-    }
+    // 始终显示固定密码，不显示 "-"
+    _serverPasswd.text = temporaryPassword;
     if (oldPwdText != _serverPasswd.text) {
       update = true;
     }
@@ -270,7 +264,8 @@ class ServerModel with ChangeNotifier {
     }
     if (_temporaryPasswordLength != temporaryPasswordLength) {
       if (_temporaryPasswordLength.isNotEmpty) {
-        bind.mainUpdateTemporaryPassword();
+        // 不调用更新临时密码
+        // bind.mainUpdateTemporaryPassword();
       }
       _temporaryPasswordLength = temporaryPasswordLength;
       update = true;

@@ -1,0 +1,256 @@
+# Windows 和 Android 自动构建工作流
+name: Build Windows and Android
+
+on:
+  push:
+    branches: [ main, master, develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      build_windows:
+        description: 'Build Windows EXE'
+        required: true
+        default: 'true'
+      build_android:
+        description: 'Build Android APK'
+        required: true
+        default: 'true'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: full
+
+jobs:
+  # ==================== Windows 构建 ====================
+  build-windows:
+    if: github.event.inputs.build_windows == 'true' || github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 1
+    
+    - name: Install Rust
+      uses: dtolnay/rust-action@stable
+      with:
+        targets: x86_64-pc-windows-msvc
+    
+    - name: Install Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        channel: 'stable'
+        flutter-version: '3.24.0'
+    
+    - name: Install vcpkg dependencies
+      run: |
+        git clone https://github.com/microsoft/vcpkg.git
+        cd vcpkg
+        .\bootstrap-vcpkg.bat -disableMetrics
+        .\vcpkg install opus:x64-windows
+        .\vcpkg install aom:x64-windows
+        .\vcpkg install libyuv:x64-windows
+        .\vcpkg install libvpx:x64-windows
+        echo "VCPKG_ROOT=${{github.workspace}}\vcpkg" >> $env:GITHUB_ENV
+    
+    - name: Install Flutter dependencies
+      working-directory: flutter
+      run: |
+        flutter config --no-analytics
+        flutter pub get
+    
+    - name: Build Flutter bindings
+      run: |
+        flutter pub global activate flutter_rust_bridge
+        flutter_rust_bridge_codegen --rust-input src/lib.rs --dart-output flutter/lib/bridge_generated.dart
+    
+    - name: Build Windows Release
+      run: cargo build --release --features flutter
+    
+    - name: Prepare release artifacts
+      run: |
+        mkdir release
+        Copy-Item target\release\remote-assist.exe release\
+        Copy-Item target\release\service.exe release\
+        Copy-Item target\release\naming.exe release\
+        Copy-Item res\icon.ico release\ -ErrorAction SilentlyContinue
+        cd release
+        Compress-Archive -Path * -DestinationPath ../remote-assist-windows-x64.zip
+      shell: pwsh
+    
+    - name: Upload Windows EXE
+      uses: actions/upload-artifact@v4
+      with:
+        name: remote-assist-windows-x64
+        path: release/remote-assist-windows-x64.zip
+        retention-days: 30
+    
+    - name: Upload to Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: remote-assist-windows-x64.zip
+        body_path: RELEASE_NOTES.md
+      env:
+        GITHUB_TOKEN: ${{ Secrets.GITHUB_TOKEN }}
+    
+    - name: Display build info
+      run: |
+        echo "✅ Windows build completed successfully!"
+        echo "Build time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+        echo "Remote assist version: 1.4.6"
+        Get-ChildItem target\release\*.exe | Select-Object Name, Length
+
+  # ==================== Android 构建 ====================
+  build-android:
+    if: github.event.inputs.build_android == 'true' || github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    
+    env:
+      ANDROID_COMPONENTS: "platform-tools;platforms;android-34;build-tools;34.0.0"
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 1
+    
+    - name: Install Rust
+      uses: dtolnay/rust-action@stable
+      with:
+        targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+    
+    - name: Install cargo-ndk
+      run: cargo install cargo-ndk
+    
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+    
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+    
+    - name: Install Android NDK
+      run: |
+        sdkmanager "ndk;26.1.10909125"
+        echo "ANDROID_NDK_HOME=${{env.ANDROID_HOME}}/ndk/26.1.10909125" >> $GITHUB_ENV
+    
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        channel: 'stable'
+        flutter-version: '3.24.0'
+        cache: true
+    
+    - name: Configure Android local properties
+      run: |
+        echo "sdk.dir=${{env.ANDROID_HOME}}" > flutter/android/local.properties
+        echo "ndk.dir=${{env.ANDROID_NDK_HOME}}" >> flutter/android/local.properties
+        cat flutter/android/local.properties
+    
+    - name: Setup keystore (if release)
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        # 这里需要使用 Secrets 中的 keystore
+        # 如果没有配置，会使用 debug 签名
+        echo "Using debug keystore for CI build"
+    
+    - name: Build Flutter dependencies
+      working-directory: flutter
+      run: |
+        flutter config --no-analytics
+        flutter pub get
+    
+    - name: Build Rust for Android
+      run: |
+        cd flutter
+        cargo ndk -t arm64-v8a -t armeabi-v7a -o android/app/src/main/jniLibs build --release
+      env:
+        VCPKG_ROOT: ''
+    
+    - name: Build Android APK
+      working-directory: flutter
+      run: |
+        flutter build apk --release --target-platform android-arm,android-arm64
+    
+    - name: Build Android App Bundle (AAB)
+      if: startsWith(github.ref, 'refs/tags/')
+      working-directory: flutter
+      run: flutter build appbundle --release
+    
+    - name: Prepare APK artifacts
+      run: |
+        mkdir -p release-apk
+        cp flutter/build/app/outputs/flutter-apk/app-release.apk release-apk/remote-assist-android.apk
+        echo "Build completed at $(date)" > release-apk/BUILD_INFO.txt
+        echo "Version: 1.4.6" >> release-apk/BUILD_INFO.txt
+        echo "Commit: ${GITHUB_SHA}" >> release-apk/BUILD_INFO.txt
+    
+    - name: Upload Android APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: remote-assist-android-apk
+        path: release-apk/
+        retention-days: 30
+    
+    - name: Upload APK to Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: release-apk/remote-assist-android.apk
+        body_path: RELEASE_NOTES.md
+      env:
+        GITHUB_TOKEN: ${{ Secrets.GITHUB_TOKEN }}
+    
+    - name: Upload AAB to Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: flutter/build/app/outputs/bundle/release/app-release.aab
+      env:
+        GITHUB_TOKEN: ${{ Secrets.GITHUB_TOKEN }}
+    
+    - name: Display build info
+      run: |
+        echo "✅ Android build completed successfully!"
+        echo "Build time: $(date)"
+        ls -lh flutter/build/app/outputs/flutter-apk/
+        echo "APK size: $(du -h flutter/build/app/outputs/flutter-apk/app-release.apk | cut -f1)"
+
+  # ==================== 构建通知 ====================
+  build-summary:
+    needs: [build-windows, build-android]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Build Summary
+      run: |
+        echo "# 🎉 构建完成总结"
+        echo ""
+        if [ "${{ needs.build-windows.result }}" == "success" ]; then
+          echo "✅ Windows 构建成功"
+        elif [ "${{ needs.build-windows.result }}" == "failure" ]; then
+          echo "❌ Windows 构建失败"
+        else
+          echo "⏭️Windows构建已跳过"
+        fi
+        echo ""
+        if [ "${{ needs.build-android.result }}" == "success" ]; then
+          echo "✅ Android 构建成功"
+        elif [ "${{ needs.build-android.result }}" == "failure" ]; then
+          echo "❌ Android 构建失败"
+        else
+          echo "⏭️Android构建已跳过"
+        fi
+        echo ""
+        echo "## 下载链接"
+        echo "- 查看 Artifacts 页面下载编译产物"
+        echo "- 如果是 Tag 推送，会在 Releases 页面提供下载"
